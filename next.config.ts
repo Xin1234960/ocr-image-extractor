@@ -13,6 +13,19 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // React 19 compatibility fix
+  experimental: {
+    turbo: {
+      rules: {
+        '*.svg': {
+          loaders: ['@svgr/webpack'],
+          as: '*.js',
+        },
+      },
+    },
+  },
+  // Disable strict mode to avoid React 18/19 conflicts
+  reactStrictMode: false,
 };
 
 export default nextConfig;

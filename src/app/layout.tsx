@@ -61,12 +61,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const isDev = process.env.COZE_PROJECT_ENV === 'DEV';
+  // Temporarily disable inspector to avoid React 19 conflicts
+  // const isDev = process.env.COZE_PROJECT_ENV === 'DEV';
 
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body className={`antialiased`}>
-        {isDev && <Inspector />}
+        {/* {isDev && <Inspector />} */}
         {children}
       </body>
     </html>

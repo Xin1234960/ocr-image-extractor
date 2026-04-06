@@ -13,13 +13,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 检查文件大小（限制10MB）
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { error: '图片大小超过10MB，请压缩后重试' },
+        { status: 400 }
+      );
+    }
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const base64Image = buffer.toString('base64');
     const dataUri = `data:${file.type};base64,${base64Image}`;
 
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
-    const config = new Config();
+    const config = new Config({ timeout: 30000 }); // 30秒超时
     const client = new LLMClient(config, customHeaders);
 
     const messages = [
@@ -38,19 +47,24 @@ export async function POST(request: NextRequest) {
             type: 'image_url' as const,
             image_url: {
               url: dataUri,
-              detail: 'high' as const
+              detail: 'low' as const // 降低图片质量以加快速度
             }
           }
         ]
       }
     ];
 
-    const response = await client.invoke(messages, {
-      model: 'doubao-seed-1-8-251228',
-      temperature: 0.3
-    });
+    const response = await Promise.race([
+      client.invoke(messages, {
+        model: 'doubao-seed-1-8-251228',
+        temperature: 0.3
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('请求超时')), 25000) // 25秒超时
+      )
+    ]);
 
-    const content = response.content;
+    const content = (response as any).content;
 
     let result: Record<string, string>;
 
@@ -83,8 +97,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('OCR识别错误:', error);
+    const errorMessage = error instanceof Error ? error.message : 'OCR识别失败';
     return NextResponse.json(
-      { error: 'OCR识别失败，请重试' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

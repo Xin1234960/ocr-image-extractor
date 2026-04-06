@@ -20,6 +20,7 @@ export default function OCRPage() {
   const [images, setImages] = useState<File[]>([]);
   const [results, setResults] = useState<OCRResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processedCount, setProcessedCount] = useState(0);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -68,63 +69,87 @@ export default function OCRPage() {
   const clearAll = useCallback(() => {
     setImages([]);
     setResults([]);
+    setProcessedCount(0);
   }, []);
+
+  const processImage = async (index: number, image: File): Promise<void> => {
+    try {
+      setResults(prev =>
+        prev.map((r, idx) =>
+          idx === index ? { ...r, status: 'processing' as const } : r
+        )
+      );
+
+      const formData = new FormData();
+      formData.append('image', image);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+
+      const response = await fetch('/api/ocr', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'OCR识别失败');
+      }
+
+      const data = await response.json();
+
+      setResults(prev =>
+        prev.map((r, idx) =>
+          idx === index
+            ? {
+                ...r,
+                manufacturer: data.manufacturer || '',
+                productionDate: data.productionDate || '',
+                serialNumber: data.serialNumber || '',
+                steelCode: data.steelCode || '',
+                status: 'success' as const,
+              }
+            : r
+        )
+      );
+    } catch (error) {
+      setResults(prev =>
+        prev.map((r, idx) =>
+          idx === index
+            ? {
+                ...r,
+                status: 'error' as const,
+                errorMessage: error instanceof Error ? error.message : '未知错误',
+              }
+            : r
+        )
+      );
+    } finally {
+      setProcessedCount(prev => prev + 1);
+    }
+  };
 
   const processOCR = useCallback(async () => {
     if (images.length === 0) return;
 
     setIsProcessing(true);
+    setProcessedCount(0);
+
+    // 并发处理，每次最多3张
+    const CONCURRENT_LIMIT = 3;
+    const tasks = [];
 
     for (let i = 0; i < images.length; i++) {
-      const image = images[i];
+      const task = processImage(i, images[i]);
+      tasks.push(task);
 
-      try {
-        setResults(prev =>
-          prev.map((r, idx) =>
-            idx === i ? { ...r, status: 'processing' as const } : r
-          )
-        );
-
-        const formData = new FormData();
-        formData.append('image', image);
-
-        const response = await fetch('/api/ocr', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error('OCR识别失败');
-        }
-
-        const data = await response.json();
-
-        setResults(prev =>
-          prev.map((r, idx) =>
-            idx === i
-              ? {
-                  ...r,
-                  manufacturer: data.manufacturer || '',
-                  productionDate: data.productionDate || '',
-                  serialNumber: data.serialNumber || '',
-                  steelCode: data.steelCode || '',
-                  status: 'success' as const,
-                }
-              : r
-          )
-        );
-      } catch (error) {
-        setResults(prev =>
-          prev.map((r, idx) =>
-            idx === i
-              ? {
-                  ...r,
-                  status: 'error' as const,
-                  errorMessage: error instanceof Error ? error.message : '未知错误',
-                }
-              : r
-          )
-        );
+      // 每3个任务一组，等待其中任意一个完成后再添加新任务
+      if (tasks.length >= CONCURRENT_LIMIT || i === images.length - 1) {
+        await Promise.allSettled(tasks);
+        tasks.length = 0; // 清空任务列表
       }
     }
 
@@ -212,7 +237,7 @@ export default function OCRPage() {
                   {isProcessing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      识别中...
+                      识别中... ({processedCount}/{images.length})
                     </>
                   ) : (
                     <>
@@ -224,6 +249,22 @@ export default function OCRPage() {
                 <Button onClick={clearAll} variant="outline">
                   清空
                 </Button>
+              </div>
+            )}
+
+            {/* 进度条 */}
+            {isProcessing && (
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span>识别进度</span>
+                  <span>{processedCount}/{images.length}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(processedCount / images.length) * 100}%` }}
+                  ></div>
+                </div>
               </div>
             )}
 

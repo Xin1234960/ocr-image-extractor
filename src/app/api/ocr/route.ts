@@ -93,18 +93,39 @@ export async function POST(request: NextRequest) {
     console.log('📥 API完整响应:', JSON.stringify(data, null, 2));
 
     let content = '';
-    if (data.choices && data.choices[0] && data.choices[0].message) {
-      content = data.choices[0].message.content;
-      console.log('✅ 从 choices.message.content 提取内容');
-    } else if (data.output && data.output[0] && data.output[0].content) {
-      content = data.output[0].content;
-      console.log('✅ 从 output[0].content 提取内容');
-    } else if (typeof data === 'object' && data.content) {
-      content = data.content;
-      console.log('✅ 从 data.content 提取内容');
-    } else {
-      content = JSON.stringify(data);
-      console.log('⚠️ 无法提取内容，返回原始数据');
+
+    // 火山引擎API返回结构：output数组中包含多个结果
+    if (data.output && Array.isArray(data.output)) {
+      console.log('✅ 找到output数组');
+
+      // 找到type为message的结果
+      const messageOutput = data.output.find((item: any) => item.type === 'message');
+      if (messageOutput && messageOutput.content) {
+        console.log('✅ 找到message.content:', messageOutput.content);
+
+        // content是数组，提取text类型的内容
+        if (Array.isArray(messageOutput.content)) {
+          const textContent = messageOutput.content.find((item: any) => item.type === 'text');
+          if (textContent && textContent.text) {
+            content = textContent.text;
+            console.log('✅ 从数组中提取文本:', content);
+          }
+        }
+      }
+    }
+
+    // 兼容其他格式
+    if (!content) {
+      if (data.choices && data.choices[0] && data.choices[0].message) {
+        content = data.choices[0].message.content;
+        console.log('✅ 从 choices.message.content 提取内容');
+      } else if (typeof data === 'object' && data.content) {
+        content = data.content;
+        console.log('✅ 从 data.content 提取内容');
+      } else {
+        content = JSON.stringify(data);
+        console.log('⚠️ 无法提取内容，返回原始数据');
+      }
     }
 
     console.log('📝 提取到的文本内容:', content);

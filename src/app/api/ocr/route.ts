@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,44 +26,64 @@ export async function POST(request: NextRequest) {
     const base64Image = buffer.toString('base64');
     const dataUri = `data:${file.type};base64,${base64Image}`;
 
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
-    const config = new Config({ timeout: 30000 }); // 30秒超时
-    const client = new LLMClient(config, customHeaders);
-
-    const messages = [
-      {
-        role: 'system' as const,
-        content: '你是一个专业的OCR识别助手。请从图片中准确提取以下字段信息：\n1. 生产厂家\n2. 生产日期\n3. 出厂编号\n4. 企业钢码\n\n请以JSON格式返回结果，字段名必须使用中文（"生产厂家"、"生产日期"、"出厂编号"、"企业钢码"）。如果某个字段在图片中找不到，请返回空字符串。'
-      },
-      {
-        role: 'user' as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: '请识别这张图片并提取以下信息：生产厂家、生产日期、出厂编号、企业钢码'
-          },
-          {
-            type: 'image_url' as const,
-            image_url: {
-              url: dataUri,
-              detail: 'low' as const // 降低图片质量以加快速度
-            }
-          }
-        ]
-      }
-    ];
+    // 使用火山引擎豆包 API
+    const apiKey = 'd909cbf0-549a-4cdc-abc5-528c2064d05b';
+    const apiUrl = 'https://ark.cn-beijing.volces.com/api/v3/responses';
 
     const response = await Promise.race([
-      client.invoke(messages, {
-        model: 'doubao-seed-1-8-251228',
-        temperature: 0.3
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'doubao-seed-2-0-pro-260215',
+          input: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_image',
+                  image_url: dataUri,
+                },
+                {
+                  type: 'input_text',
+                  text: '你是一个专业的OCR识别助手。请从图片中准确提取以下字段信息：\n1. 生产厂家\n2. 生产日期\n3. 出厂编号\n4. 企业钢码\n\n请以JSON格式返回结果，字段名必须使用中文（"生产厂家"、"生产日期"、"出厂编号"、"企业钢码"）。如果某个字段在图片中找不到，请返回空字符串。'
+                }
+              ]
+            }
+          ]
+        }),
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('请求超时')), 60000) // 增加到60秒超时
+        setTimeout(() => reject(new Error('请求超时')), 60000) // 60秒超时
       )
     ]);
 
-    const content = (response as any).content;
+    if (!(response instanceof Response)) {
+      throw new Error('请求超时');
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('API错误:', errorData);
+      throw new Error(errorData.error?.message || `API返回错误: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('API响应:', JSON.stringify(data, null, 2));
+
+    let content = '';
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      content = data.choices[0].message.content;
+    } else if (data.output && data.output[0] && data.output[0].content) {
+      content = data.output[0].content;
+    } else if (typeof data === 'object' && data.content) {
+      content = data.content;
+    } else {
+      content = JSON.stringify(data);
+    }
 
     let result: Record<string, string>;
 

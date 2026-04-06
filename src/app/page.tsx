@@ -84,7 +84,7 @@ export default function OCRPage() {
       formData.append('image', image);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+      const timeoutId = setTimeout(() => controller.abort(), 65000); // 65秒超时（比后端多5秒）
 
       const response = await fetch('/api/ocr', {
         method: 'POST',
@@ -138,8 +138,8 @@ export default function OCRPage() {
     setIsProcessing(true);
     setProcessedCount(0);
 
-    // 并发处理，每次最多3张
-    const CONCURRENT_LIMIT = 3;
+    // 并发处理，每次最多2张（减少并发以降低服务器压力）
+    const CONCURRENT_LIMIT = 2;
     const tasks = [];
 
     for (let i = 0; i < images.length; i++) {

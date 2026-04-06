@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         temperature: 0.3
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('请求超时')), 25000) // 25秒超时
+        setTimeout(() => reject(new Error('请求超时')), 60000) // 增加到60秒超时
       )
     ]);
 

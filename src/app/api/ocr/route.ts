@@ -55,17 +55,19 @@ export async function POST(request: NextRequest) {
 
 {
   "生产厂家": "具体的生产厂家名称",
-  "生产日期": "YYYY-MM-DD格式的日期",
-  "出厂编号": "产品出厂编号",
-  "企业钢码": "企业钢码信息"
+  "生产日期": "日期（保留原图中的格式，如：2018-10、2018-10-15、2018年10月等）",
+  "出厂编号": "产品出厂编号或序列号",
+  "企业钢码": "企业钢码或钢印编号"
 }
 
 重要提示：
 1. 必须返回JSON格式，不要包含任何其他文字
 2. 如果某个字段找不到，填写"未找到"而不是空字符串
-3. 生产日期如果是中文格式，请转换为YYYY-MM-DD格式
-4. 不要使用markdown代码块（不要用\`\`\`json包裹）
-5. 直接返回纯JSON文本`
+3. 生产日期要保留原图中的原始格式，不要转换
+4. 常见日期格式：YYYY-MM、YYYY-MM-DD、YYYY年MM月、YYYY/MM、YYYY/MM/DD等
+5. 不要使用markdown代码块（不要用\`\`\`json包裹）
+6. 直接返回纯JSON文本
+7. 字段名称必须完全匹配：生产厂家、生产日期、出厂编号、企业钢码`
                 }
               ]
             }
@@ -120,16 +122,73 @@ export async function POST(request: NextRequest) {
         console.log('✅ 找到JSON格式:', jsonMatch[0]);
         result = JSON.parse(jsonMatch[0]);
         console.log('✅ 解析结果:', result);
+
+        // 处理生产日期：保留原始格式或提取日期
+        if (result.生产日期) {
+          const dateText = result.生产日期;
+          console.log('📅 原始日期文本:', dateText);
+
+          // 检查是否是"未找到"
+          if (dateText === '未找到' || dateText === '' || dateText === null) {
+            result.productionDate = '';
+          } else {
+            // 提取日期部分，去掉多余文字
+            // 匹配各种日期格式：2018-10、2018-10-15、2018年10月、2018/10等
+            const datePatterns = [
+              /(\d{4})[-年\/](\d{1,2})(?:[-月\/](\d{1,2}))?/,  // 2018-10, 2018-10-15, 2018年10月
+              /(\d{4})[-年\/](\d{1,2})[-月\/](\d{1,2})/,        // 2018-10-15
+              /(\d{4})年(\d{1,2})月(?:\d{1,2}日)?/,            // 2018年10月
+              /(\d{4})\.(\d{1,2})(?:\.(\d{1,2}))?/,             // 2018.10
+            ];
+
+          for (const pattern of datePatterns) {
+            const match = dateText.match(pattern);
+            if (match) {
+              const year = match[1];
+              const month = match[2].padStart(2, '0');
+              const day = match[3] ? match[3].padStart(2, '0') : '';
+              result.productionDate = day ? `${year}-${month}-${day}` : `${year}-${month}`;
+              console.log('📅 提取的日期:', result.productionDate);
+              break;
+            }
+          }
+
+          // 如果没有匹配到，保留原始文本
+          if (!result.productionDate) {
+            result.productionDate = dateText;
+            console.log('📅 保留原始日期:', result.productionDate);
+          }
+          }
+        }
       } else {
         console.log('⚠️ 未找到JSON格式，尝试其他方法');
-        // 尝试使用正则表达式提取
+        // 使用正则表达式提取
         const manufacturerMatch = content.match(/生产厂[家称]*[:：]\s*([^\n]+)/);
         const dateMatch = content.match(/生产日期[:：]\s*([^\n]+)/);
         const serialMatch = content.match(/出厂编号[:：]\s*([^\n]+)/);
         const steelMatch = content.match(/企业钢码[:：]\s*([^\n]+)/);
 
         if (manufacturerMatch) result.manufacturer = manufacturerMatch[1].trim();
-        if (dateMatch) result.productionDate = dateMatch[1].trim();
+        if (dateMatch) {
+          // 从日期文本中提取日期部分
+          const dateText = dateMatch[1].trim();
+          const datePatterns = [
+            /(\d{4})[-年\/](\d{1,2})(?:[-月\/](\d{1,2}))?/,
+          ];
+          for (const pattern of datePatterns) {
+            const match = dateText.match(pattern);
+            if (match) {
+              const year = match[1];
+              const month = match[2].padStart(2, '0');
+              const day = match[3] ? match[3].padStart(2, '0') : '';
+              result.productionDate = day ? `${year}-${month}-${day}` : `${year}-${month}`;
+              break;
+            }
+          }
+          if (!result.productionDate) {
+            result.productionDate = dateText;
+          }
+        }
         if (serialMatch) result.serialNumber = serialMatch[1].trim();
         if (steelMatch) result.steelCode = steelMatch[1].trim();
 

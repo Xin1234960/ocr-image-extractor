@@ -49,7 +49,23 @@ export async function POST(request: NextRequest) {
                 },
                 {
                   type: 'input_text',
-                  text: '你是一个专业的OCR识别助手。请从图片中准确提取以下字段信息：\n1. 生产厂家\n2. 生产日期\n3. 出厂编号\n4. 企业钢码\n\n请以JSON格式返回结果，字段名必须使用中文（"生产厂家"、"生产日期"、"出厂编号"、"企业钢码"）。如果某个字段在图片中找不到，请返回空字符串。'
+                  text: `请仔细观察这张图片，识别并提取以下信息。如果某个字段在图片中找不到，请明确标注"未找到"。
+
+请严格按以下JSON格式返回（不要添加任何其他文字）：
+
+{
+  "生产厂家": "具体的生产厂家名称",
+  "生产日期": "YYYY-MM-DD格式的日期",
+  "出厂编号": "产品出厂编号",
+  "企业钢码": "企业钢码信息"
+}
+
+重要提示：
+1. 必须返回JSON格式，不要包含任何其他文字
+2. 如果某个字段找不到，填写"未找到"而不是空字符串
+3. 生产日期如果是中文格式，请转换为YYYY-MM-DD格式
+4. 不要使用markdown代码块（不要用\`\`\`json包裹）
+5. 直接返回纯JSON文本`
                 }
               ]
             }
@@ -72,41 +88,63 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('API响应:', JSON.stringify(data, null, 2));
+    console.log('📥 API完整响应:', JSON.stringify(data, null, 2));
 
     let content = '';
     if (data.choices && data.choices[0] && data.choices[0].message) {
       content = data.choices[0].message.content;
+      console.log('✅ 从 choices.message.content 提取内容');
     } else if (data.output && data.output[0] && data.output[0].content) {
       content = data.output[0].content;
+      console.log('✅ 从 output[0].content 提取内容');
     } else if (typeof data === 'object' && data.content) {
       content = data.content;
+      console.log('✅ 从 data.content 提取内容');
     } else {
       content = JSON.stringify(data);
+      console.log('⚠️ 无法提取内容，返回原始数据');
     }
 
-    let result: Record<string, string>;
+    console.log('📝 提取到的文本内容:', content);
+
+    let result: Record<string, string> = {
+      manufacturer: '',
+      productionDate: '',
+      serialNumber: '',
+      steelCode: ''
+    };
 
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
+        console.log('✅ 找到JSON格式:', jsonMatch[0]);
         result = JSON.parse(jsonMatch[0]);
+        console.log('✅ 解析结果:', result);
       } else {
-        result = {
-          manufacturer: '',
-          productionDate: '',
-          serialNumber: '',
-          steelCode: ''
-        };
+        console.log('⚠️ 未找到JSON格式，尝试其他方法');
+        // 尝试使用正则表达式提取
+        const manufacturerMatch = content.match(/生产厂[家称]*[:：]\s*([^\n]+)/);
+        const dateMatch = content.match(/生产日期[:：]\s*([^\n]+)/);
+        const serialMatch = content.match(/出厂编号[:：]\s*([^\n]+)/);
+        const steelMatch = content.match(/企业钢码[:：]\s*([^\n]+)/);
+
+        if (manufacturerMatch) result.manufacturer = manufacturerMatch[1].trim();
+        if (dateMatch) result.productionDate = dateMatch[1].trim();
+        if (serialMatch) result.serialNumber = serialMatch[1].trim();
+        if (steelMatch) result.steelCode = steelMatch[1].trim();
+
+        console.log('🔍 正则提取结果:', result);
       }
-    } catch {
-      result = {
-        manufacturer: '',
-        productionDate: '',
-        serialNumber: '',
-        steelCode: ''
-      };
+    } catch (error) {
+      console.error('❌ JSON解析失败:', error);
     }
+
+    console.log('📤 最终返回结果:', {
+      manufacturer: result.生产厂家 || result.manufacturer || '',
+      productionDate: result.生产日期 || result.productionDate || '',
+      serialNumber: result.出厂编号 || result.serialNumber || '',
+      steelCode: result.企业钢码 || result.steelCode || ''
+    });
 
     return NextResponse.json({
       manufacturer: result.生产厂家 || result.manufacturer || '',

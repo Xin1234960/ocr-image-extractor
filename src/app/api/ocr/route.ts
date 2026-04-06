@@ -109,31 +109,30 @@ export async function POST(request: NextRequest) {
 
     console.log('📝 提取到的文本内容:', content);
 
-    let result: Record<string, string> = {
-      manufacturer: '',
-      productionDate: '',
-      serialNumber: '',
-      steelCode: ''
+    let apiResult: Record<string, string> = {
+      '生产厂家': '',
+      '生产日期': '',
+      '出厂编号': '',
+      '企业钢码': ''
     };
 
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         console.log('✅ 找到JSON格式:', jsonMatch[0]);
-        result = JSON.parse(jsonMatch[0]);
-        console.log('✅ 解析结果:', result);
+        apiResult = JSON.parse(jsonMatch[0]);
+        console.log('✅ 解析的API结果:', apiResult);
 
         // 处理生产日期：保留原始格式或提取日期
-        if (result.生产日期) {
-          const dateText = result.生产日期;
+        if (apiResult['生产日期']) {
+          const dateText = apiResult['生产日期'];
           console.log('📅 原始日期文本:', dateText);
 
           // 检查是否是"未找到"
           if (dateText === '未找到' || dateText === '' || dateText === null) {
-            result.productionDate = '';
+            apiResult['生产日期'] = '';
           } else {
             // 提取日期部分，去掉多余文字
-            // 匹配各种日期格式：2018-10、2018-10-15、2018年10月、2018/10等
             const datePatterns = [
               /(\d{4})[-年\/](\d{1,2})(?:[-月\/](\d{1,2}))?/,  // 2018-10, 2018-10-15, 2018年10月
               /(\d{4})[-年\/](\d{1,2})[-月\/](\d{1,2})/,        // 2018-10-15
@@ -147,16 +146,16 @@ export async function POST(request: NextRequest) {
               const year = match[1];
               const month = match[2].padStart(2, '0');
               const day = match[3] ? match[3].padStart(2, '0') : '';
-              result.productionDate = day ? `${year}-${month}-${day}` : `${year}-${month}`;
-              console.log('📅 提取的日期:', result.productionDate);
+              apiResult['生产日期'] = day ? `${year}-${month}-${day}` : `${year}-${month}`;
+              console.log('📅 提取的日期:', apiResult['生产日期']);
               break;
             }
           }
 
           // 如果没有匹配到，保留原始文本
-          if (!result.productionDate) {
-            result.productionDate = dateText;
-            console.log('📅 保留原始日期:', result.productionDate);
+          if (!apiResult['生产日期'] || apiResult['生产日期'] === dateText) {
+            apiResult['生产日期'] = dateText;
+            console.log('📅 保留原始日期:', apiResult['生产日期']);
           }
           }
         }
@@ -168,9 +167,8 @@ export async function POST(request: NextRequest) {
         const serialMatch = content.match(/出厂编号[:：]\s*([^\n]+)/);
         const steelMatch = content.match(/企业钢码[:：]\s*([^\n]+)/);
 
-        if (manufacturerMatch) result.manufacturer = manufacturerMatch[1].trim();
+        if (manufacturerMatch) apiResult['生产厂家'] = manufacturerMatch[1].trim();
         if (dateMatch) {
-          // 从日期文本中提取日期部分
           const dateText = dateMatch[1].trim();
           const datePatterns = [
             /(\d{4})[-年\/](\d{1,2})(?:[-月\/](\d{1,2}))?/,
@@ -181,36 +179,34 @@ export async function POST(request: NextRequest) {
               const year = match[1];
               const month = match[2].padStart(2, '0');
               const day = match[3] ? match[3].padStart(2, '0') : '';
-              result.productionDate = day ? `${year}-${month}-${day}` : `${year}-${month}`;
+              apiResult['生产日期'] = day ? `${year}-${month}-${day}` : `${year}-${month}`;
               break;
             }
           }
-          if (!result.productionDate) {
-            result.productionDate = dateText;
+          if (!apiResult['生产日期']) {
+            apiResult['生产日期'] = dateText;
           }
         }
-        if (serialMatch) result.serialNumber = serialMatch[1].trim();
-        if (steelMatch) result.steelCode = steelMatch[1].trim();
+        if (serialMatch) apiResult['出厂编号'] = serialMatch[1].trim();
+        if (steelMatch) apiResult['企业钢码'] = steelMatch[1].trim();
 
-        console.log('🔍 正则提取结果:', result);
+        console.log('🔍 正则提取结果:', apiResult);
       }
     } catch (error) {
       console.error('❌ JSON解析失败:', error);
     }
 
-    console.log('📤 最终返回结果:', {
-      manufacturer: result.生产厂家 || result.manufacturer || '',
-      productionDate: result.生产日期 || result.productionDate || '',
-      serialNumber: result.出厂编号 || result.serialNumber || '',
-      steelCode: result.企业钢码 || result.steelCode || ''
-    });
+    // 映射到英文键
+    const finalResult = {
+      manufacturer: apiResult['生产厂家'] || '',
+      productionDate: apiResult['生产日期'] || '',
+      serialNumber: apiResult['出厂编号'] || '',
+      steelCode: apiResult['企业钢码'] || ''
+    };
 
-    return NextResponse.json({
-      manufacturer: result.生产厂家 || result.manufacturer || '',
-      productionDate: result.生产日期 || result.productionDate || '',
-      serialNumber: result.出厂编号 || result.serialNumber || '',
-      steelCode: result.企业钢码 || result.steelCode || ''
-    });
+    console.log('📤 最终返回结果:', finalResult);
+
+    return NextResponse.json(finalResult);
   } catch (error) {
     console.error('OCR识别错误:', error);
     const errorMessage = error instanceof Error ? error.message : 'OCR识别失败';
